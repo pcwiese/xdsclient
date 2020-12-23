@@ -1,7 +1,7 @@
 #!/bin/bash
 
-openssl genrsa -out client.key 2048
-openssl req -new -key client.key -out client.csr -subj "/C=CN/ST=Beijing/L=Chaoyang/O=DevOps/OU=PKI/CN=localhost"
+openssl genrsa -out Certs/client.key 2048
+openssl req -new -key Certs/client.key -out Certs/client.csr -subj "/C=CN/ST=Beijing/L=Chaoyang/O=DevOps/OU=PKI/CN=localhost"
 
 cp openssl.cnf openssl.actual.conf
 # identityTemplate         = "spiffe://%s/ns/%s/sa/%s"
@@ -9,9 +9,9 @@ echo "URI = spiffe://cluster.local/ns/bookinfo/sa/bookinfo-details" >> openssl.a
 
 openssl x509 -req -extensions v3_req -sha256 -days 365 \
     -CA Certs/ca-cert.pem -CAkey Certs/ca-key.pem -CAcreateserial -extfile openssl.actual.conf \
-    -in client.csr -out client.pem
+    -in Certs/client.csr -out Certs/client.pem
     
-openssl pkcs12 -export -out client.pfx -inkey client.key -in client.pem
+openssl pkcs12 -export -out Certs/client.pfx -inkey Certs/client.key -in Certs/client.pem
 
 
 # name=${1:-foo}

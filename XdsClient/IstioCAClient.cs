@@ -11,7 +11,7 @@ namespace XdsClient
     {
         public static async Task<X509Certificate> CreateClientCertificateAsync(string uriSAN)
         {
-            return new X509Certificate2(@"C:\Users\jijie\Documents\Projects\XdsClient\XdsClient\client.pfx", string.Empty);
+            return new X509Certificate2(@"C:\Users\jijie\Documents\Projects\XdsClient\XdsClient\Certs\client.pfx", string.Empty);
         }
 
         public static async Task<X509Certificate> GetIstiodCACertAsync()
