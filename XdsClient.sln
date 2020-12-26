@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XdsClient", "XdsClient\XdsClient.csproj", "{D5678DE9-3876-4755-8C91-4EFB118B1235}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IstioCaGrpc", "IstioCaGrpc\IstioCaGrpc.csproj", "{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

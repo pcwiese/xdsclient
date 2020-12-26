@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -9,6 +8,7 @@ using Envoy.Config.Core.V3;
 using Envoy.Service.Discovery.V3;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client;
+using k8s;
 
 namespace XdsClient
 {
@@ -16,16 +16,17 @@ namespace XdsClient
     {
         static async Task Main(string[] args)
         {
+            var istiodURL = "https://192.168.1.152:15012";
+            using var kubeClient = new Kubernetes(KubernetesClientConfiguration.BuildDefaultConfig());
+            
             var role = ProxyRole.Router.ToString().ToLowerInvariant();
             var k8sNamespace = "fake-ns";
-            var serviceAccountName = "bookinfo-details";
             var nodeId = $"{role}~192.168.1.1~fake-node.{k8sNamespace}~{k8sNamespace}.svc.cluster.local";
-            var istiodURL = "https://192.168.1.152:15012";
 
-            var clientCertificate = await IstioCAClient.CreateClientCertificateAsync($"spiffe://cluster.local/ns/{k8sNamespace}/sa/{serviceAccountName}");
-            var serverCertificate = await IstioCAClient.GetIstiodCACertAsync();
+            var validIstioCaCertificate = await IstioCAClient.GetIstiodCACertAsync(kubeClient);
+            var clientCertificate = await IstioCAClient.CreateClientCertificateAsync(kubeClient, istiodURL, validIstioCaCertificate);
 
-            var adsClient = CreateXdsClient(clientCertificate, serverCertificate, istiodURL);
+            var adsClient = CreateXdsClient(clientCertificate, validIstioCaCertificate, istiodURL);
             await ListClustersAsync(nodeId, adsClient);
         }
 

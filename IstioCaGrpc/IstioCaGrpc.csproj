@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.14.0" />
+      <PackageReference Include="Grpc" Version="2.34.0" />
+      <PackageReference Include="Grpc.Tools" Version="2.34.0">
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProtoRoot Include="Proto" />
+    </ItemGroup>
+    <Target Name="Protobuf_Override" BeforeTargets="_Protobuf_CoreCompile">
+        <PropertyGroup>
+            <Protobuf_StandardImportsPath>$(Protobuf_StandardImportsPath);@(ProtoRoot)</Protobuf_StandardImportsPath>
+        </PropertyGroup>
+    </Target>
+    
+    <ItemGroup>
+        <Compile Remove="Proto\**" />
+        <EmbeddedResource Remove="Proto\**" />
+        <None Remove="Proto\**" />
+        <Protobuf Include="Proto\**\*.proto" ProtoRoot="Proto" OutputDir="$(IntermediateOutputPath)\proto\$([MSBuild]::MakeRelative($(MSBuildThisFileDirectory), %(RelativeDir)))" />
+    </ItemGroup>
+</Project>
