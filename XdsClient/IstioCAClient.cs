@@ -28,8 +28,9 @@ namespace XdsClient
             var istioSaJwtToken = await RetriveIstiodSaTokenAsync(kubeClient);
             var csr = GenerateCSR($"spiffe://cluster.local/ns/{IstioNamespace}/sa/{IstioServiceAccount}");
 
-            var sdsClient = CreateSdsClient(istioSdsEndpoint, istioCaCert);
+            var (grpcConnection, sdsClient) = CreateSdsClient(istioSdsEndpoint, istioCaCert);
             var signedCerts = await RequestNewCertificate(csr.Csr, sdsClient, istioSaJwtToken);
+            await grpcConnection.ShutdownAsync();
             return ExportAsCertificate(signedCerts, istioCaCert, csr.PrivateKey);
         }
 
@@ -48,19 +49,17 @@ namespace XdsClient
         }
 
 
-        private static IstioCertificateService.IstioCertificateServiceClient CreateSdsClient(string endpoint, X509Certificate serverCertificate)
+        private static (ChannelBase, IstioCertificateService.IstioCertificateServiceClient) CreateSdsClient(string endpoint, X509Certificate serverCertificate)
         {
-            var handler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = CreateCertificateValidator(serverCertificate)
-            };
-       
-
             var grpcConnection = GrpcChannel.ForAddress(endpoint, new GrpcChannelOptions
             {
-                HttpHandler = handler
+                HttpHandler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = CreateCertificateValidator(serverCertificate)
+                }
             });
-            return new IstioCertificateService.IstioCertificateServiceClient(grpcConnection);
+            
+            return (grpcConnection, new IstioCertificateService.IstioCertificateServiceClient(grpcConnection));
         }
 
         private static ClientCsrRequest GenerateCSR(string spiffeURI)
