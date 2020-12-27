@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Envoy.Config.Cluster.V3;
@@ -28,7 +27,7 @@ namespace XdsClient
         {
             var istiodURL = "https://192.168.1.152:15012";
             var k8sNamespace = "bookinfo";
-            var role = ProxyRole.Sidecar.ToString().ToLowerInvariant();
+            var role = ProxyRole.Router.ToString().ToLowerInvariant();
             var nodeId = $"{role}~192.168.1.1~fake-node.{k8sNamespace}~{k8sNamespace}.svc.cluster.local";
 
             using var kubeClient = new Kubernetes(KubernetesClientConfiguration.BuildDefaultConfig());
@@ -38,25 +37,29 @@ namespace XdsClient
 
             var xdsResources = await ListResourcesAsync(nodeId, adsClient);
             await grpcConnection.ShutdownAsync();
+            
+            Console.WriteLine("======= Clusters =======");
             foreach (var cluster in xdsResources.Clusters)
             {
                 Console.WriteLine(cluster);
             }
+            
+            Console.WriteLine("======= Endpoints =======");
             foreach (var endpoint in xdsResources.Endpoints)
             {
                 Console.WriteLine(endpoint);
             }
+            
+            Console.WriteLine("======= Listeners =======");
             foreach (var listener in xdsResources.Listeners)
             {
                 Console.WriteLine(listener);
             }
+            
+            Console.WriteLine("======= Routes =======");
             foreach (var route in xdsResources.Routes)
             {
                 Console.WriteLine(route);
-            }
-            foreach (var extension in xdsResources.Extensions)
-            {
-                Console.WriteLine(extension);
             }
         }
         
@@ -77,8 +80,6 @@ namespace XdsClient
             resources.Listeners = await FetchResources<Listener>(nodeId, EnvoyTypeConstants.ListenerType, null, streamingCall);
             var routeNames = GetRouteNames(resources.Listeners);
             resources.Routes = await FetchResources<RouteConfiguration>(nodeId, EnvoyTypeConstants.RouteType, routeNames, streamingCall);
-            
-            resources.Extensions = await FetchResources<Extension>(nodeId, EnvoyTypeConstants.ExtensionConfigType, null, streamingCall);
             
             return resources;
         }
@@ -142,11 +143,9 @@ namespace XdsClient
         {
             public List<Cluster> Clusters { get; set; }
             public List<ClusterLoadAssignment> Endpoints { get; set; }
-            
             public List<Listener> Listeners { get; set; }
             public List<RouteConfiguration> Routes { get; set; }
             
-            public List<Extension> Extensions { get; set; }
         }
     }
 }
