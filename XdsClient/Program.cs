@@ -17,7 +17,6 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Grpc.Net.Client;
 using k8s;
-using Extension = Envoy.Config.Core.V3.Extension;
 
 namespace XdsClient
 {
