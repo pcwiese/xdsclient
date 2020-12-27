@@ -20,7 +20,7 @@ using McMaster.Extensions.CommandLineUtils;
 
 namespace XdsClient
 {
-    public class Runner
+    public class Program
     {
         static async Task Main(string[] args)
         {
@@ -85,25 +85,22 @@ namespace XdsClient
         private static async Task<XdsResources> ListResourcesAsync(string nodeId, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient)
         {
             var resources = new XdsResources();
-            var streamingCall = adsClient.StreamAggregatedResources();
-
-            resources.Clusters = await FetchResources<Cluster>(nodeId, EnvoyTypeConstants.ClusterType, null, streamingCall);
+            resources.Clusters = await FetchResources<Cluster>(adsClient, nodeId, EnvoyTypeConstants.ClusterType, null);
 
             var endpointNames = resources.Clusters
                 .Select(c => c.EdsClusterConfig?.ServiceName)
                 .Where(e => e != null)
                 .Distinct()
                 .ToList();
-            resources.Endpoints = await FetchResources<ClusterLoadAssignment>(nodeId, EnvoyTypeConstants.EndpointType, endpointNames, streamingCall);
+            resources.Endpoints = await FetchResources<ClusterLoadAssignment>(adsClient, nodeId, EnvoyTypeConstants.EndpointType, endpointNames);
             
-            resources.Listeners = await FetchResources<Listener>(nodeId, EnvoyTypeConstants.ListenerType, null, streamingCall);
-            var routeNames = GetRouteNames(resources.Listeners);
-            resources.Routes = await FetchResources<RouteConfiguration>(nodeId, EnvoyTypeConstants.RouteType, routeNames, streamingCall);
+            resources.Listeners = await FetchResources<Listener>(adsClient, nodeId, EnvoyTypeConstants.ListenerType, null);
+            resources.Routes = await FetchResources<RouteConfiguration>(adsClient, nodeId, EnvoyTypeConstants.RouteType, GetRouteNames(resources.Listeners));
             
             return resources;
         }
 
-        private static async Task<List<T>> FetchResources<T>(string nodeId, string resourceTypeString, List<string> resourceNames, AsyncDuplexStreamingCall<DiscoveryRequest, DiscoveryResponse> call) where T : IMessage, new()
+        private static async Task<List<T>> FetchResources<T>(AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient, string nodeId, string resourceTypeString, List<string> resourceNames) where T : IMessage, new()
         {
             var request = new DiscoveryRequest
             {
@@ -118,10 +115,11 @@ namespace XdsClient
             {
                 request.ResourceNames.AddRange(resourceNames);
             }
-            await call.RequestStream.WriteAsync(request);
-            
-            await call.ResponseStream.MoveNext(CancellationToken.None);
-            var resources = call.ResponseStream.Current.Resources.Select(res => res.Unpack<T>()).ToList();
+            using var streamingCall = adsClient.StreamAggregatedResources();
+            await streamingCall.RequestStream.WriteAsync(request);
+
+            await streamingCall.ResponseStream.MoveNext(CancellationToken.None);
+            var resources = streamingCall.ResponseStream.Current.Resources.Select(res => res.Unpack<T>()).ToList();
             return resources;
         }
 
