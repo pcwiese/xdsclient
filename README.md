@@ -10,13 +10,9 @@ This repo shows how to use .NET code to connect to an Istiod discovery (Pilot) s
 
 后续工作：
 
-* 拉取 EnvoyFilter 资源
-* 参数化，允许指定下列参数：
-  * istiod 地址
-  * router/sidecar 模式
-  * 命名空间
-* 持续侦听并接收 push，比较新版与旧版本的差异（diff）
 * 将 Route 合并到 Listener 中展示；将 Endpoint 合并到 Cluster 中展示
-* 在持续连接时，处理证书过期的情况（用快过期的证书调用 sds 接口）
+* 持续侦听并接收 push，比较新版与旧版本的差异（diff）
 * 在代码里自动 port-forward，不需要手工提前 port-forward
+* 在持续连接时，处理证书过期的情况（用快过期的证书调用 sds 接口）
+* 拉取 EnvoyFilter 资源
 
