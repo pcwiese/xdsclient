@@ -20,11 +20,11 @@ using McMaster.Extensions.CommandLineUtils;
 
 namespace XdsClient
 {
-    // read istio url, cluster-id from pod parameters
-    // given pod, read its configuration
+    // given pod, read its configuration, get istiod url
     // unpack typed config automatically
-    // ui
     // port-forward istio xds-grpc
+    // ui
+    // request cert from real ca
     
     public class Program
     {
@@ -71,12 +71,13 @@ namespace XdsClient
                 return;
             }
 
+            var clusterId = istioProxy.Env.Single(e => e.Name == "ISTIO_META_CLUSTER_ID");
             var isSidecar = istioProxy.Args.Any(x => x == "sidecar");
             var nodeRole = isSidecar ? "sidecar" : "router";
             var nodeId = $"{nodeRole}~{podip}~{podName}.{kubeConfig.Namespace}~{kubeConfig.Namespace}.svc.cluster.local";
 
             var (grpcConnection, adsClient) = await CreateXdsClient(kubeClient, istiodUrl, kubeConfig.Namespace, pod.Spec.ServiceAccountName);
-            var xdsResources = await ListResourcesAsync(nodeId, adsClient);
+            var xdsResources = await ListResourcesAsync(clusterId.Value, nodeId, adsClient);
             await grpcConnection.ShutdownAsync();
 
             Console.WriteLine("======= Clusters =======");
@@ -104,25 +105,26 @@ namespace XdsClient
             }
         }
 
-        private static async Task<XdsResources> ListResourcesAsync(string nodeId, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient)
+        private static async Task<XdsResources> ListResourcesAsync(string clusterId, string nodeId, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient)
         {
             var resources = new XdsResources();
-            resources.Clusters = await FetchResources<Cluster>(adsClient, nodeId, EnvoyTypeConstants.ClusterType, null);
+            resources.Clusters = await FetchResources<Cluster>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ClusterType, null);
 
             var endpointNames = resources.Clusters
                 .Select(c => c.EdsClusterConfig?.ServiceName)
                 .Where(e => e != null)
                 .Distinct()
                 .ToList();
-            resources.Endpoints = await FetchResources<ClusterLoadAssignment>(adsClient, nodeId, EnvoyTypeConstants.EndpointType, endpointNames);
+            resources.Endpoints = await FetchResources<ClusterLoadAssignment>(adsClient, clusterId, nodeId, EnvoyTypeConstants.EndpointType, endpointNames);
             
-            resources.Listeners = await FetchResources<Listener>(adsClient, nodeId, EnvoyTypeConstants.ListenerType, null);
-            resources.Routes = await FetchResources<RouteConfiguration>(adsClient, nodeId, EnvoyTypeConstants.RouteType, GetRouteNames(resources.Listeners));
+            resources.Listeners = await FetchResources<Listener>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ListenerType, null);
+            resources.Routes = await FetchResources<RouteConfiguration>(adsClient, clusterId, nodeId, EnvoyTypeConstants.RouteType, GetRouteNames(resources.Listeners));
             
             return resources;
         }
 
-        private static async Task<List<T>> FetchResources<T>(AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient, string nodeId, string resourceTypeString, List<string> resourceNames) where T : IMessage, new()
+        private static async Task<List<T>> FetchResources<T>(AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient, 
+            string clusterId, string nodeId, string resourceTypeString, List<string> resourceNames) where T : IMessage, new()
         {
             var request = new DiscoveryRequest
             {
@@ -133,7 +135,7 @@ namespace XdsClient
                     {
                         Fields =
                         {
-                            ["CLUSTER_ID"] = Value.ForString("Kubernetes")
+                            ["CLUSTER_ID"] = Value.ForString(clusterId)
                         }
                     }
                 }, 
