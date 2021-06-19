@@ -7,6 +7,7 @@ using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Envoy.Api.V2.Core;
 using Google.Protobuf.Collections;
@@ -21,15 +22,14 @@ namespace XdsClient
     class IstioCAClient
     {
         const string IstioNamespace = "istio-system";
-        const string IstioServiceAccount = "istiod-service-account";
         
-        public static async Task<X509Certificate2> CreateClientCertificateAsync(Kubernetes kubeClient, string istioSdsEndpoint, X509Certificate2 istioCaCert)
+        public static async Task<X509Certificate2> CreateClientCertificateAsync(Kubernetes kubeClient, string istioSdsEndpoint, X509Certificate2 istioCaCert, string podNamespace, string serviceAccountName)
         {
-            var istioSaJwtToken = await RetriveIstiodSaTokenAsync(kubeClient);
-            var csr = GenerateCSR($"spiffe://cluster.local/ns/{IstioNamespace}/sa/{IstioServiceAccount}");
+            var saToken = await RetriveSaTokenAsync(kubeClient, serviceAccountName, podNamespace);
+            var csr = GenerateCSR($"spiffe://cluster.local/ns/{podNamespace}/sa/{serviceAccountName}");
 
             var (grpcConnection, sdsClient) = CreateSdsClient(istioSdsEndpoint, istioCaCert);
-            var signedCerts = await RequestNewCertificate(csr.Csr, sdsClient, istioSaJwtToken);
+            var signedCerts = await RequestNewCertificate(csr.Csr, sdsClient, saToken);
             await grpcConnection.ShutdownAsync();
             return ExportAsCertificate(signedCerts, istioCaCert, csr.PrivateKey);
         }
@@ -83,12 +83,12 @@ namespace XdsClient
             };
         }
 
-        private static async Task<string> RetriveIstiodSaTokenAsync(Kubernetes kubeClient)
+        private static async Task<string> RetriveSaTokenAsync(Kubernetes kubeClient, string saName, string namespaceName)
         {
-            var istiodServiceAccount = await kubeClient.ReadNamespacedServiceAccountAsync(IstioServiceAccount, IstioNamespace);
+            var istiodServiceAccount = await kubeClient.ReadNamespacedServiceAccountAsync(saName, namespaceName);
             var secretName = istiodServiceAccount.Secrets[0].Name;
 
-            var saSecret = await kubeClient.ReadNamespacedSecretAsync(secretName, IstioNamespace);
+            var saSecret = await kubeClient.ReadNamespacedSecretAsync(secretName, namespaceName);
             return Encoding.ASCII.GetString(saSecret.Data["token"]);
         }
 
@@ -150,6 +150,19 @@ namespace XdsClient
             }
 
             var thisCertificate = certs[0];
+            var timeOffset = DateTime.Now - thisCertificate.NotBefore;
+            if (timeOffset.TotalMilliseconds < 0)
+            {
+                if (timeOffset.TotalMilliseconds < 10_000)
+                {
+                    // sleep a short time to wait for the certificate to take effect
+                    Thread.Sleep((int)Math.Floor(timeOffset.TotalSeconds) + 1);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"It's not possible to request a valid certificate from istio because the system time is much slower than the istio server: {timeOffset.TotalSeconds}s");    
+                }
+            }
             if (!ValidateCertChain(chain, thisCertificate, trustedRootCert))
             {
                 throw new InvalidOperationException("The signed certificate is not signed by the Istio CA");

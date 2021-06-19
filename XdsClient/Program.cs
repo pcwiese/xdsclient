@@ -20,6 +20,12 @@ using McMaster.Extensions.CommandLineUtils;
 
 namespace XdsClient
 {
+    // read istio url, cluster-id from pod parameters
+    // given pod, read its configuration
+    // unpack typed config automatically
+    // ui
+    // port-forward istio xds-grpc
+    
     public class Program
     {
         static async Task Main(string[] args)
@@ -29,31 +35,47 @@ namespace XdsClient
 
             app.HelpOption();
             var optionNamespace = app.Option("-n|--namespace <NAMESPACE>", "The Kubernetes namespace name in which the node is placed at.", CommandOptionType.SingleValue);
-            var optionRole = app.Option("--role <ROLE>", "Specify the role for a node for which you want to fetch xDS configuration. Value can be one of these: sidecar, router", CommandOptionType.SingleValue);
             var optionIstioURL = app.Option("--istiod <ISTIO_PILOT_URL>", "Specify the URL of the istio pilot server (istiod).", CommandOptionType.SingleValue);
+            var targetPodName = app.Argument("pod-name", "target pod to play", false);
 
             app.OnExecuteAsync(async (cancellationToken) =>
             {
                 var k8sNamespace = optionNamespace.HasValue() ? optionNamespace.Value() : null;
-                var proxyRole = optionRole.HasValue() ? optionRole.Value() : "sidecar";
                 var istiodURL = optionIstioURL.HasValue() ? optionIstioURL.Value() : (Environment.GetEnvironmentVariable("ISTIOD_URL") ?? "https://localhost:15012");
-                if (string.IsNullOrEmpty(k8sNamespace))
+                var k8sConfig = KubernetesClientConfiguration.BuildDefaultConfig();
+                if (!string.IsNullOrEmpty(k8sNamespace))
                 {
-                    var k8sConfig = KubernetesClientConfiguration.BuildDefaultConfig();
-                    k8sNamespace = k8sConfig.Namespace ?? "default";
+                    k8sConfig.Namespace = k8sNamespace;
                 }
-
-                await PrintResources(istiodURL, k8sNamespace, proxyRole);
+                if (string.IsNullOrEmpty(k8sConfig.Namespace))
+                {
+                    k8sConfig.Namespace = "default";
+                }
+                
+                var kubeClient = new Kubernetes(k8sConfig);
+                await PrintResources(kubeClient, k8sConfig, targetPodName.Value, istiodURL);
             });
 
             await app.ExecuteAsync(args);
         }
 
-        private static async Task PrintResources(string istiodUrl, string k8SNamespace, string nodeRole)
+        private static async Task PrintResources(Kubernetes kubeClient, KubernetesClientConfiguration kubeConfig, string podName, string istiodUrl)
         {
-            var nodeId = $"{nodeRole}~192.168.1.1~fake-node.{k8SNamespace}~{k8SNamespace}.svc.cluster.local";
+            var podResp = await kubeClient.ReadNamespacedPodWithHttpMessagesAsync(podName, kubeConfig.Namespace);
+            var pod = podResp.Body;
+            var podip = pod.Status.PodIP;
+            var istioProxy = pod.Spec.Containers.FirstOrDefault(c => c.Name == "istio-proxy");
+            if (istioProxy == null)
+            {
+                await Console.Error.WriteLineAsync($"Pod {podName} does not have a sidecar injected, and it is not a gateway.");
+                return;
+            }
 
-            var (grpcConnection, adsClient) = await CreateXdsClient(istiodUrl);
+            var isSidecar = istioProxy.Args.Any(x => x == "sidecar");
+            var nodeRole = isSidecar ? "sidecar" : "router";
+            var nodeId = $"{nodeRole}~{podip}~{podName}.{kubeConfig.Namespace}~{kubeConfig.Namespace}.svc.cluster.local";
+
+            var (grpcConnection, adsClient) = await CreateXdsClient(kubeClient, istiodUrl, kubeConfig.Namespace, pod.Spec.ServiceAccountName);
             var xdsResources = await ListResourcesAsync(nodeId, adsClient);
             await grpcConnection.ShutdownAsync();
 
@@ -149,12 +171,11 @@ namespace XdsClient
                 .ToList();
         }
 
-        private static async Task<(ChannelBase, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient)> CreateXdsClient(string istiodURL)
+        private static async Task<(ChannelBase, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient)> CreateXdsClient(Kubernetes kubeClient, string istiodURL, string podNamespace, string serviceAccountName)
         {
-            using var kubeClient = new Kubernetes(KubernetesClientConfiguration.BuildDefaultConfig());
             
             var validIstioCaCertificate = await IstioCAClient.GetIstiodCACertAsync(kubeClient);
-            var clientCertificate = await IstioCAClient.CreateClientCertificateAsync(kubeClient, istiodURL, validIstioCaCertificate); 
+            var clientCertificate = await IstioCAClient.CreateClientCertificateAsync(kubeClient, istiodURL, validIstioCaCertificate, podNamespace, serviceAccountName); 
             
             AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
             var handler = new HttpClientHandler();
