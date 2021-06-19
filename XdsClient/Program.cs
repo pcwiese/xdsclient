@@ -107,7 +107,13 @@ namespace XdsClient
                 Node = new Node()
                 {
                     Id = nodeId,
-                    Metadata = new Struct()
+                    Metadata = new Struct
+                    {
+                        Fields =
+                        {
+                            ["CLUSTER_ID"] = Value.ForString("Kubernetes")
+                        }
+                    }
                 }, 
                 TypeUrl = resourceTypeString
             };
@@ -127,11 +133,11 @@ namespace XdsClient
         {
             return listeners.Select(l =>
                 {
-                    var httpFilterChain = l.FilterChains?.FirstOrDefault(chain =>
-                        chain.FilterChainMatch?.ApplicationProtocols != null &&
-                        chain.FilterChainMatch.ApplicationProtocols.Contains("http/1.1"));
-                    var hcm = httpFilterChain?.Filters?.FirstOrDefault(f => f.Name == "envoy.http_connection_manager");
-                    return hcm?.TypedConfig;
+                    var filter = l.FilterChains?
+                        .Select(chain => chain.Filters?.FirstOrDefault(f =>  f.Name == "envoy.http_connection_manager" || f.Name == "envoy.filters.network.http_connection_manager"))
+                        .FirstOrDefault();
+                    
+                    return filter?.TypedConfig;
                 }).Where(hcmConfig => hcmConfig != null)
                 .Select(hcmConfig =>
                 {
@@ -150,9 +156,11 @@ namespace XdsClient
             var validIstioCaCertificate = await IstioCAClient.GetIstiodCACertAsync(kubeClient);
             var clientCertificate = await IstioCAClient.CreateClientCertificateAsync(kubeClient, istiodURL, validIstioCaCertificate); 
             
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
             var handler = new HttpClientHandler();
             handler.ClientCertificates.Add(clientCertificate);
             handler.ServerCertificateCustomValidationCallback = IstioCAClient.CreateCertificateValidator(validIstioCaCertificate);
+            // handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 
             var grpcConnection = GrpcChannel.ForAddress(istiodURL, new GrpcChannelOptions
             {

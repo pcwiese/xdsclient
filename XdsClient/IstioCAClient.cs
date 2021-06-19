@@ -64,10 +64,9 @@ namespace XdsClient
 
         private static ClientCsrRequest GenerateCSR(string spiffeURI)
         {
-            var subjectName = $"CN={spiffeURI},O=XdsClient,OU=jijiechen,T=Shenzhen,ST=Guangdong,C=China";
+            var subjectName = $"CN={spiffeURI},O=XdsClient,OU=jijiechen,T=Shenzhen,C=China";
             var sanBuilder = new SubjectAlternativeNameBuilder();
             sanBuilder.AddUri(new Uri(spiffeURI));
-
 
             using var privateKey = RSA.Create(2048);
             var certificateRequest = new CertificateRequest(subjectName, privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
