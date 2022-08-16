@@ -1,8 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XdsClient", "XdsClient\XdsClient.csproj", "{D5678DE9-3876-4755-8C91-4EFB118B1235}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IstioCaGrpc", "IstioCaGrpc\IstioCaGrpc.csproj", "{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32802.462
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "XdsClient", "XdsClient\XdsClient.csproj", "{D5678DE9-3876-4755-8C91-4EFB118B1235}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -14,9 +15,11 @@ Global
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D5678DE9-3876-4755-8C91-4EFB118B1235}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D2203A0C-BA6D-4979-8110-6EFF450A4D5D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E1BC950B-D983-4284-B5BB-6A8A5AE04E6E}
 	EndGlobalSection
 EndGlobal

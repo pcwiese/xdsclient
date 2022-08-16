@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "XdsClient": {
+      "commandName": "Project",
+      "commandLineArgs": "-n default grpc-agent-proxy-generic-host-7f874c559b-hdsrn",
+      "environmentVariables": {
+        "KUBECONFIG": "\\\\wsl$\\Ubuntu-20.04\\home\\peter\\.kube\\istio-dev"
+      }
+    }
+  }
+}

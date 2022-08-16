@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Envoy.Config.Cluster.V3;
@@ -41,7 +40,7 @@ namespace XdsClient
             app.OnExecuteAsync(async (cancellationToken) =>
             {
                 var k8sNamespace = optionNamespace.HasValue() ? optionNamespace.Value() : null;
-                var istiodURL = optionIstioURL.HasValue() ? optionIstioURL.Value() : (Environment.GetEnvironmentVariable("ISTIOD_URL") ?? "https://localhost:15012");
+                var istiodURL = optionIstioURL.HasValue() ? optionIstioURL.Value() : (Environment.GetEnvironmentVariable("ISTIOD_URL") ?? "http://localhost:30011");
                 var k8sConfig = KubernetesClientConfiguration.BuildDefaultConfig();
                 if (!string.IsNullOrEmpty(k8sNamespace))
                 {
@@ -71,54 +70,87 @@ namespace XdsClient
                 return;
             }
 
-            var clusterId = istioProxy.Env.Single(e => e.Name == "ISTIO_META_CLUSTER_ID");
+            var clusterId = istioProxy.Env.Single(e => e.Name == "ISTIO_META_CLUSTER_ID").Value;
             var isSidecar = istioProxy.Args.Any(x => x == "sidecar");
             var nodeRole = isSidecar ? "sidecar" : "router";
             var nodeId = $"{nodeRole}~{podip}~{podName}.{kubeConfig.Namespace}~{kubeConfig.Namespace}.svc.cluster.local";
 
-            var (grpcConnection, adsClient) = await CreateXdsClient(kubeClient, istiodUrl, kubeConfig.Namespace, pod.Spec.ServiceAccountName);
-            var xdsResources = await ListResourcesAsync(clusterId.Value, nodeId, adsClient);
-            await grpcConnection.ShutdownAsync();
+            using var channel = GrpcChannel.ForAddress(istiodUrl);
+            var client = new AggregatedDiscoveryService.AggregatedDiscoveryServiceClient(channel);
 
-            Console.WriteLine("======= Clusters =======");
-            foreach (var cluster in xdsResources.Clusters)
+            var request = CreateDiscoveryRequest(clusterId, nodeId, EnvoyTypeConstants.EndpointType);
+            ////var request = CreateDiscoveryRequest(clusterId, nodeId, EnvoyTypeConstants.ListenerType);
+            var resourceNames = new Google.Protobuf.Collections.RepeatedField<string>();
+            request.ResourceNames.Add("outbound|40041||media-transformer.tts-frontend.svc.cluster.local");
+            ////request.ResourceNames.Add("media-transformer.tts-frontend.svc.cluster.local:40041");
+            ////ldsRequest.ResourceNamesSubscribe.Add("media-transformer-service.tts-frontend.svc.cluster.local:40041");
+
+            using var call = client.StreamAggregatedResources();
+            await call.RequestStream.WriteAsync(request);
+
+            while (await call.ResponseStream.MoveNext(CancellationToken.None))
             {
-                Console.WriteLine(cluster);
+                var response = call.ResponseStream.Current;
+
+                // ACK it
+                var ack = CreateDiscoveryRequest(clusterId, nodeId);
+                ack.ResponseNonce = response.Nonce;
+                await call.RequestStream.WriteAsync(ack);
+
+                var clusterLoadAssignment = response.Resources.Select(r => r.Unpack<ClusterLoadAssignment>()).FirstOrDefault();
+                var endpoints = clusterLoadAssignment?.Endpoints.SelectMany(x => x.LbEndpoints.Select(y => y.Endpoint));
+                ////var addresses = new List<BalancerAddress>(endpoints != null ? endpoints.Count() : 0);
+                if (endpoints != null)
+                {
+                    foreach (var endpoint in endpoints)
+                    {
+                        ////addresses.Add(new BalancerAddress(new DnsEndPoint(new IPAddress(endpoint.Address).ToString(), endpoint.Address.SocketAddress)));
+                    }
+                }
             }
 
-            Console.WriteLine("======= Endpoints =======");
-            foreach (var endpoint in xdsResources.Endpoints)
-            {
-                Console.WriteLine(endpoint);
-            }
+            ////var xdsResources = await ListResourcesAsync(clusterId, nodeId, client);
+            ////await channel.ShutdownAsync();
 
-            Console.WriteLine("======= Listeners =======");
-            foreach (var listener in xdsResources.Listeners)
-            {
-                Console.WriteLine(listener);
-            }
+            ////Console.WriteLine("======= Clusters =======");
+            ////foreach (var cluster in xdsResources.Clusters)
+            ////{
+            ////    Console.WriteLine(cluster);
+            ////}
 
-            Console.WriteLine("======= Routes =======");
-            foreach (var route in xdsResources.Routes)
-            {
-                Console.WriteLine(route);
-            }
+            ////Console.WriteLine("======= Endpoints =======");
+            ////foreach (var endpoint in xdsResources.Endpoints)
+            ////{
+            ////    Console.WriteLine(endpoint);
+            ////}
+
+            ////Console.WriteLine("======= Listeners =======");
+            ////foreach (var listener in xdsResources.Listeners)
+            ////{
+            ////    Console.WriteLine(listener);
+            ////}
+
+            ////Console.WriteLine("======= Routes =======");
+            ////foreach (var route in xdsResources.Routes)
+            ////{
+            ////    Console.WriteLine(route);
+            ////}
         }
 
         private static async Task<XdsResources> ListResourcesAsync(string clusterId, string nodeId, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient adsClient)
         {
             var resources = new XdsResources();
-            resources.Clusters = await FetchResources<Cluster>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ClusterType, null);
+            ////resources.Clusters = await FetchResources<Cluster>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ClusterType, new List<string> { "*" });
 
-            var endpointNames = resources.Clusters
-                .Select(c => c.EdsClusterConfig?.ServiceName)
-                .Where(e => e != null)
-                .Distinct()
-                .ToList();
-            resources.Endpoints = await FetchResources<ClusterLoadAssignment>(adsClient, clusterId, nodeId, EnvoyTypeConstants.EndpointType, endpointNames);
-            
-            resources.Listeners = await FetchResources<Listener>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ListenerType, null);
-            resources.Routes = await FetchResources<RouteConfiguration>(adsClient, clusterId, nodeId, EnvoyTypeConstants.RouteType, GetRouteNames(resources.Listeners));
+            ////var endpointNames = resources.Clusters
+            ////    .Select(c => c.EdsClusterConfig?.ServiceName)
+            ////    .Where(e => e != null)
+            ////    .Distinct()
+            ////    .ToList();
+            ////resources.Endpoints = await FetchResources<ClusterLoadAssignment>(adsClient, clusterId, nodeId, EnvoyTypeConstants.EndpointType, endpointNames);
+
+            resources.Listeners = await FetchResources<Listener>(adsClient, clusterId, nodeId, EnvoyTypeConstants.ListenerType, new List<string> { "media-transformer.tts-frontend:40041" });
+            //resources.Routes = await FetchResources<RouteConfiguration>(adsClient, clusterId, nodeId, EnvoyTypeConstants.RouteType, GetRouteNames(resources.Listeners));
             
             return resources;
         }
@@ -158,9 +190,9 @@ namespace XdsClient
             return listeners.Select(l =>
                 {
                     var filter = l.FilterChains?
-                        .Select(chain => chain.Filters?.FirstOrDefault(f =>  f.Name == "envoy.http_connection_manager" || f.Name == "envoy.filters.network.http_connection_manager"))
+                        .Select(chain => chain.Filters?.FirstOrDefault(f => f.Name == "envoy.http_connection_manager" || f.Name == "envoy.filters.network.http_connection_manager"))
                         .FirstOrDefault();
-                    
+
                     return filter?.TypedConfig;
                 }).Where(hcmConfig => hcmConfig != null)
                 .Select(hcmConfig =>
@@ -173,31 +205,37 @@ namespace XdsClient
                 .ToList();
         }
 
-        private static async Task<(ChannelBase, AggregatedDiscoveryService.AggregatedDiscoveryServiceClient)> CreateXdsClient(Kubernetes kubeClient, string istiodURL, string podNamespace, string serviceAccountName)
+        private static DiscoveryRequest CreateDiscoveryRequest(string clusterId, string nodeId, string typeUrl = default)
         {
-            
-            var validIstioCaCertificate = await IstioCAClient.GetIstiodCACertAsync(kubeClient);
-            var clientCertificate = await IstioCAClient.CreateClientCertificateAsync(kubeClient, istiodURL, validIstioCaCertificate, podNamespace, serviceAccountName); 
-            
-            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-            var handler = new HttpClientHandler();
-            handler.ClientCertificates.Add(clientCertificate);
-            handler.ServerCertificateCustomValidationCallback = IstioCAClient.CreateCertificateValidator(validIstioCaCertificate);
-            // handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-
-            var grpcConnection = GrpcChannel.ForAddress(istiodURL, new GrpcChannelOptions
+            var request = new DiscoveryRequest
             {
-                HttpHandler = handler
-            });
-            return (grpcConnection, new AggregatedDiscoveryService.AggregatedDiscoveryServiceClient(grpcConnection));
+                Node = new Node()
+                {
+                    Id = nodeId,
+                    Metadata = new Struct
+                    {
+                        Fields =
+                        {
+                            ["CLUSTER_ID"] = Value.ForString(clusterId)
+                        }
+                    }
+                },
+            };
+
+            if (typeUrl != default)
+            {
+                request.TypeUrl = typeUrl;
+            }
+
+            return request;
         }
 
         class XdsResources
         {
-            public List<Cluster> Clusters { get; set; }
-            public List<ClusterLoadAssignment> Endpoints { get; set; }
-            public List<Listener> Listeners { get; set; }
-            public List<RouteConfiguration> Routes { get; set; }
+            public List<Cluster> Clusters { get; set; } = new List<Cluster>();
+            public List<ClusterLoadAssignment> Endpoints { get; set; } = new List<ClusterLoadAssignment>();
+            public List<Listener> Listeners { get; set; } = new List<Listener>();
+            public List<RouteConfiguration> Routes { get; set; } = new List<RouteConfiguration>();
             
         }
     }
